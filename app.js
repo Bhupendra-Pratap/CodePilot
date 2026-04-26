@@ -17,33 +17,40 @@ const client = new OpenAI({
   baseURL: "https://router.huggingface.co/v1",
   apiKey: process.env.HF_TOKEN,
 });
+let conversationHistory = [];
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 app.post("/api/message", async (req, res) => {
-  const prompt = req.body && typeof req.body.prompt === "string" ? req.body.prompt.trim() : "";
+const prompt = req.body && typeof req.body.prompt === "string" ? req.body.prompt.trim() : "";
+if (!prompt) {
+  return res.status(400).json({ error: "Prompt is required." });
+}
 
-  if (!prompt) {
-    return res.status(400).json({ error: "Prompt is required." });
+try {
+  conversationHistory.push({ role: "user", content: prompt });
+
+  if (conversationHistory.length > 20) {
+    conversationHistory = conversationHistory.slice(-20);
   }
 
-  try {
-    const chatCompletion = await client.chat.completions.create({
-      model,
-      messages: [{ role: "user", content: prompt }],
-    });
+  const chatCompletion = await client.chat.completions.create({
+    model,
+    messages: conversationHistory,
+  });
 
-    const reply =
-      chatCompletion.choices?.[0]?.message?.content || "No response text returned.";
-    return res.json({ reply });
-  } catch (error) {
+  const reply = chatCompletion.choices?.[0]?.message?.content || "No response text returned.";
+  
+  conversationHistory.push({ role: "assistant", content: reply });
+
+  return res.json({ reply });
+} catch (error) {
     console.error("Hugging Face request failed:", error.message);
     return res.status(500).json({ error: "Failed to get response from Hugging Face." });
   }
 });
-
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
 });
